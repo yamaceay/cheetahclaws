@@ -504,6 +504,16 @@ class MCPManager:
 
     def __init__(self):
         self._clients: Dict[str, MCPClient] = {}
+        self.__sanitized_map: Optional[Dict[str, MCPClient]] = None
+
+    def _get_sanitized_map(self) -> Dict[str, MCPClient]:
+        """Return a cached dict mapping sanitized server name → MCPClient."""
+        if self.__sanitized_map is None:
+            self.__sanitized_map = {
+                "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in c.config.name): c
+                for c in self._clients.values()
+            }
+        return self.__sanitized_map
 
     def add_server(self, config: MCPServerConfig) -> MCPClient:
         """Register a server. Replaces any existing client with the same name."""
@@ -514,6 +524,7 @@ class MCPManager:
                 pass
         client = MCPClient(config)
         self._clients[config.name] = client
+        self.__sanitized_map = None  # invalidate cache
         return client
 
     def connect_all(self) -> Dict[str, Optional[str]]:
@@ -557,11 +568,7 @@ class MCPManager:
         server_name_sanitized = parts[1]
         tool_name = parts[2]
 
-        client = next(
-            (c for c in self._clients.values()
-             if "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in c.config.name) == server_name_sanitized),
-            None,
-        )
+        client = self._get_sanitized_map().get(server_name_sanitized)
         if client is None:
             raise RuntimeError(f"MCP server '{server_name_sanitized}' not configured")
 
