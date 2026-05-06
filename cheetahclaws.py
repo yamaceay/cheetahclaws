@@ -171,6 +171,7 @@ from ui.render import (
     set_spinner_phrase, set_rich_live,
     print_tool_start, print_tool_end,
     _RICH, console,
+    reset_turn_stats, record_tool, print_turn_recap,
 )
 
 # ── Input layer (prompt_toolkit with readline fallback) ──────────────────
@@ -832,6 +833,7 @@ def repl(config: dict, initial_prompt: str = None):
 
             print(clr("\n╭─ CheetahClaws ", "dim") + clr("●", "green") + clr(" ─────────────────────────", "dim"))
 
+            reset_turn_stats()
             thinking_started = False
             spinner_shown = True
             _start_tool_spinner()
@@ -839,6 +841,7 @@ def repl(config: dict, initial_prompt: str = None):
             _post_tool = False    # true after a tool has executed
             _post_tool_buf = []   # text chunks after tool (to check for duplicates)
             _duplicate_suppressed = False
+            _turn_output_tokens = 0
 
             try:
                 for event in run(user_input, state, config, system_prompt):
@@ -900,6 +903,7 @@ def repl(config: dict, initial_prompt: str = None):
                     elif isinstance(event, ToolStart):
                         flush_response()
                         print_tool_start(event.name, event.inputs, verbose)
+                        record_tool(event.name, event.inputs or {})
                         _hook = session_ctx.on_tool_start
                         if _hook:
                             try:
@@ -934,6 +938,7 @@ def repl(config: dict, initial_prompt: str = None):
                     elif isinstance(event, TurnDone):
                         _stop_tool_spinner()
                         spinner_shown = False
+                        _turn_output_tokens = event.output_tokens
                         if verbose:
                             flush_response()  # stop Live before printing token info
                             print(clr(
@@ -968,6 +973,7 @@ def repl(config: dict, initial_prompt: str = None):
 
             _stop_tool_spinner()
             flush_response()  # stop Live, commit any remaining text
+            print_turn_recap(_turn_output_tokens)
             print(clr("╰──────────────────────────────────────────────", "dim"))
             print()
 

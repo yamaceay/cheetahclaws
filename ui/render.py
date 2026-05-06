@@ -7,6 +7,7 @@ Provides:
   - Spinner management
   - Tool call display (print_tool_start, print_tool_end)
   - Diff rendering (render_diff)
+  - Turn recap (print_turn_recap, reset_turn_stats)
 """
 from __future__ import annotations
 
@@ -53,6 +54,55 @@ def _truncate_err_global(s: str, max_len: int = 200) -> str:
     if len(s) <= max_len:
         return s
     return s[:max_len - 3] + "..."
+
+
+# ── Turn stats (rule-based recap) ──────────────────────────────────────────
+
+class _TurnStats:
+    """Lightweight mutable counter reset at the start of each agent turn."""
+    def __init__(self):
+        self.tool_calls: int = 0
+        self.files_edited: set[str] = set()
+
+    def reset(self) -> None:
+        self.tool_calls = 0
+        self.files_edited = set()
+
+turn_stats = _TurnStats()
+
+# Tools whose file_path argument counts as "file edited"
+_FILE_EDIT_TOOLS = {"Edit", "Write", "NotebookEdit"}
+
+
+def reset_turn_stats() -> None:
+    """Call at the start of each agent turn to clear counters."""
+    turn_stats.reset()
+
+
+def record_tool(name: str, inputs: dict) -> None:
+    """Increment tool_calls; track file path for edit-class tools."""
+    turn_stats.tool_calls += 1
+    if name in _FILE_EDIT_TOOLS:
+        path = inputs.get("file_path") or inputs.get("notebook_path") or ""
+        if path:
+            turn_stats.files_edited.add(path)
+
+
+def print_turn_recap(output_tokens: int) -> None:
+    """Print a compact dim one-liner summarising the completed turn."""
+    parts: list[str] = []
+    if turn_stats.tool_calls:
+        parts.append(f"{turn_stats.tool_calls} tool{'s' if turn_stats.tool_calls != 1 else ''}")
+    if turn_stats.files_edited:
+        n = len(turn_stats.files_edited)
+        parts.append(f"{n} file{'s' if n != 1 else ''} edited")
+    if output_tokens:
+        tok_str = f"{output_tokens:,}".replace(",", " ")
+        parts.append(f"{tok_str} tokens")
+    if parts:
+        line = "  ∙ " + " · ".join(parts)
+        print(clr(line, "dim"), flush=True)
+    turn_stats.reset()
 
 
 # ── Diff rendering ─────────────────────────────────────────────────────────
