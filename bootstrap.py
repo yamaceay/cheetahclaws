@@ -11,7 +11,8 @@ All steps are idempotent: calling bootstrap() more than once is harmless.
 Startup sequence:
   1. Configure structured logging (earliest possible so all steps emit events)
   2. Ensure the tool registry is populated (imports tools.py)
-  3. Start the optional health-check HTTP server (if health_check_port is set)
+  3. Connect MCP servers (background connection + tool registration)
+  4. Start the optional health-check HTTP server (if health_check_port is set)
 """
 from __future__ import annotations
 
@@ -44,7 +45,7 @@ def bootstrap(config: dict) -> None:
     import cc_mcp.tools as _mcp_tools  # noqa: F401
     _log.debug("bootstrap_mcp_connecting")
 
-    # ── 5. Health-check HTTP server ────────────────────────────────────────
+    # ── 4. Health-check HTTP server ────────────────────────────────────────
     port = config.get("health_check_port")
     if port:
         try:
