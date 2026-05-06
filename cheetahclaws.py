@@ -288,15 +288,15 @@ def _missing_module_cmd(name: str):
 
 def ask_permission_interactive(desc: str, config: dict) -> bool:
     # Inline-keyboard buttons for bridges that support them (Telegram today).
-    # Terminal / Slack / WeChat ignore `options` and the [y/N/a] hint in the
-    # prompt text keeps them functional.
+    # Terminal / Slack / WeChat ignore `options` and the [Y/n/a] hint in the
+    # prompt text keeps them functional. Enter (empty) means yes.
     perm_options = [
         ("✅ Approve",       "y"),
         ("❌ Reject",        "n"),
         ("✅✅ Accept all",  "a"),
     ]
     text = ask_input_interactive(
-        f"  Allow: {desc}  [y/N/a(ccept-all)] ",
+        f"  Allow: {desc}  [Y/n/a(ccept-all)] ",
         config,
         options=perm_options,
     ).strip().lower()
@@ -311,7 +311,7 @@ def ask_permission_interactive(desc: str, config: dict) -> bool:
             ok("  Permission mode set to accept-all for this session.")
         return True
 
-    return text in ("y", "yes")
+    return text in ("y", "yes", "")
 
 
 # ── Proactive watcher ──────────────────────────────────────────────────────
