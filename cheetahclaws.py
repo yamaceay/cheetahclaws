@@ -125,7 +125,10 @@ def _load_env() -> None:
             if not _line or _line.startswith("#") or "=" not in _line:
                 continue
             _k, _, _v = _line.partition("=")
-            os.environ.setdefault(_k.strip(), _v.strip())
+            _v2 = _v.strip()
+            if len(_v2) >= 2 and _v2[0] in ('"', "'") and _v2[-1] == _v2[0]:
+                _v2 = _v2[1:-1]
+            os.environ.setdefault(_k.strip(), _v2)
 _load_env()
 import re
 import sys
