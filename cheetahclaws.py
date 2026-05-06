@@ -193,6 +193,7 @@ from ui.render import (
 
 # ── Input layer (prompt_toolkit with readline fallback) ──────────────────
 import ui.input as _ui_input
+import ui.agent_state as _agent_state
 _pt_read_line = _ui_input.read_line
 HAS_PROMPT_TOOLKIT = _ui_input.HAS_PROMPT_TOOLKIT
 
@@ -837,6 +838,10 @@ def repl(config: dict, initial_prompt: str = None):
     def run_query(user_input: str, is_background: bool = False):
         nonlocal verbose
 
+        # Clear any leftover suggestion from the previous turn so the empty
+        # prompt doesn't show a stale ghost text while the agent is thinking.
+        _agent_state._next_suggestion = ""
+
         with query_lock:
             verbose = config.get("verbose", False)
 
@@ -988,6 +993,33 @@ def repl(config: dict, initial_prompt: str = None):
             flush_response()  # stop Live, commit any remaining text
             print(clr("╰──────────────────────────────────────────────", "dim"))
             print()
+
+            # ── Extract follow-up suggestion from the last assistant message ──
+            # Look for the last sentence ending with "?" in the assistant's
+            # response; if it's under 120 chars, offer it as Tab-acceptable
+            # ghost text in the next input prompt.
+            try:
+                if state.messages and state.messages[-1].get("role") == "assistant":
+                    _ans = state.messages[-1].get("content", "")
+                    if isinstance(_ans, list):
+                        _ans = " ".join(
+                            b["text"] if isinstance(b, dict) else str(b)
+                            for b in _ans
+                            if (isinstance(b, dict) and b.get("type") == "text")
+                            or isinstance(b, str)
+                        )
+                    if _ans:
+                        import re as _re
+                        _sentences = _re.split(r'(?<=[.!?])\s+', _ans.strip())
+                        _suggestion = ""
+                        for _sent in reversed(_sentences):
+                            _sent = _sent.strip()
+                            if _sent.endswith("?") and len(_sent) <= 120:
+                                _suggestion = _sent
+                                break
+                        _agent_state._next_suggestion = _suggestion
+            except Exception:
+                pass  # never let suggestion extraction break the REPL
 
             # If this was a background task, we redraw the prompt for the user
             if is_background:
