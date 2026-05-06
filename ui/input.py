@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 try:
     from prompt_toolkit import PromptSession
-    from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+    from prompt_toolkit.auto_suggest import AutoSuggest, AutoSuggestFromHistory, Suggestion
     from prompt_toolkit.completion import Completer, Completion
     from prompt_toolkit.formatted_text import ANSI
     from prompt_toolkit.application import get_app
@@ -138,6 +138,26 @@ else:  # pragma: no cover — unreachable when prompt_toolkit is installed
             raise RuntimeError("prompt_toolkit is not installed")
 
 
+# ── Agent-suggested follow-up AutoSuggest ────────────────────────────────────
+if HAS_PROMPT_TOOLKIT:
+
+    class AgentSuggest(AutoSuggest):
+        """Shows the agent's last follow-up question as grey ghost text.
+
+        When the input buffer is empty and ``ui.agent_state._next_suggestion``
+        holds a non-empty string (set at the end of each agent turn), that
+        string is returned as the suggestion so the user can press Tab to
+        accept it.  When the buffer is non-empty, or no agent suggestion is
+        available, fall back to AutoSuggestFromHistory.
+        """
+
+        def get_suggestion(self, buffer, document):
+            from ui.agent_state import _next_suggestion
+            if _next_suggestion and not document.text:
+                return Suggestion(_next_suggestion)
+            return AutoSuggestFromHistory().get_suggestion(buffer, document)
+
+
 # ── Key bindings ─────────────────────────────────────────────────────────────
 if HAS_PROMPT_TOOLKIT:
 
@@ -195,7 +215,7 @@ def _build_session(history_path: Optional[Path]):
     return PromptSession(
         history=history,
         completer=completer,
-        auto_suggest=AutoSuggestFromHistory(),
+        auto_suggest=AgentSuggest(),
         complete_while_typing=True,
         enable_history_search=False,
         mouse_support=False,
@@ -204,12 +224,19 @@ def _build_session(history_path: Optional[Path]):
     )
 
 
-def read_line(prompt_ansi: str, history_path: Optional[Path] = None) -> str:
+def read_line(
+    prompt_ansi: str,
+    history_path: Optional[Path] = None,
+    default: str = "",
+) -> str:
     """Read one line of input via prompt_toolkit; caches the session across calls.
 
     The history file passed here MUST NOT be the readline history file — the
     two line-editors use incompatible formats. See cheetahclaws.repl for the
     dedicated PT_HISTORY_FILE.
+
+    `default` pre-fills the input buffer so the user can edit or accept it
+    by pressing Enter.  Passed straight through to PromptSession.prompt().
     """
     global _SESSION, _SESSION_HISTORY_PATH
     if _SESSION is not None and _SESSION_HISTORY_PATH != history_path:
@@ -218,4 +245,4 @@ def read_line(prompt_ansi: str, history_path: Optional[Path] = None) -> str:
         _SESSION = _build_session(history_path)
         _SESSION_HISTORY_PATH = history_path
     with patch_stdout(raw=True):
-        return _SESSION.prompt(ANSI(prompt_ansi))
+        return _SESSION.prompt(ANSI(prompt_ansi), default=default)

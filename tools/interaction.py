@@ -4,8 +4,51 @@ and bridge-routing helpers (Telegram / WeChat / Slack).
 """
 from __future__ import annotations
 
+import json
 import threading
+from pathlib import Path
 from typing import Optional
+
+# ── Answer memory store ───────────────────────────────────────────────────────
+
+_ANSWER_STORE_PATH = Path.home() / ".cheetahclaws" / "input_memory.json"
+_ANSWER_STORE_MAX  = 200
+
+# Sentinel substrings that mark security-sensitive prompts — never persisted.
+_SENSITIVE_KEYWORDS = ("password", "token", "secret", "key")
+
+
+def _load_answers() -> dict:
+    """Return the persisted answer dict, or {} on any read/parse error."""
+    try:
+        with _ANSWER_STORE_PATH.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_answer(key: str, value: str) -> None:
+    """Persist *value* under *key*, capping the store at _ANSWER_STORE_MAX entries.
+
+    If the store is already at capacity the oldest entry (first key in
+    insertion order) is dropped before writing the new one.
+    """
+    try:
+        _ANSWER_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        store = _load_answers()
+        # Remove the key first so re-inserting it moves it to the end
+        # (most-recently-used position).
+        store.pop(key, None)
+        # Evict oldest entries until one slot is free.
+        while len(store) >= _ANSWER_STORE_MAX:
+            oldest = next(iter(store))
+            del store[oldest]
+        store[key] = value
+        with _ANSWER_STORE_PATH.open("w", encoding="utf-8") as fh:
+            json.dump(store, fh, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # Never let storage errors surface to the user.
 
 # ── Bridge turn-detection (thread-local) ──────────────────────────────────
 
@@ -194,6 +237,15 @@ def ask_input_interactive(prompt: str, config: dict,
     _menu_block = _format_menu_block(options) if options else ""
     _value_map  = _build_value_map(options) if options else {}
 
+    # ── Answer memory: look up a stored default for this prompt ───────────
+    _prompt_key = prompt.strip()
+    _is_sensitive = any(kw in _prompt_key.lower() for kw in _SENSITIVE_KEYWORDS)
+    _last_answer: str = ""
+    if not _is_sensitive and not options:
+        # Only pre-fill free-text prompts; structured option menus handle
+        # their own default UX through buttons / numbers.
+        _last_answer = _load_answers().get(_prompt_key, "")
+
     # ── Slack ──────────────────────────────────────────────────────────────
     if _is_in_slack_turn(config) and _session_ctx.slack_send is not None:
         clean_prompt = _re.sub(r'\x1b\[[0-9;]*m', '', prompt).strip()
@@ -315,7 +367,30 @@ def ask_input_interactive(prompt: str, config: dict,
             print()
             print(_menu_block)
         rl_prompt = _re.sub(r'(\x1b\[[0-9;]*m)', r'\001\1\002', prompt)
-        return _resolve_choice(input(rl_prompt), _value_map)
+
+        # Try prompt_toolkit path first (supports pre-filled default text).
+        try:
+            from ui.input import read_line, HAS_PROMPT_TOOLKIT
+            if HAS_PROMPT_TOOLKIT:
+                raw = read_line(prompt, default=_last_answer)
+            else:
+                raise ImportError
+        except (ImportError, Exception):
+            # Readline fallback: show the stored default as a visual hint
+            # so the user knows what value will be used if they just press Enter.
+            _rl_prompt_with_hint = rl_prompt
+            if _last_answer:
+                # Append the hint before the trailing "> " or at the end.
+                _rl_prompt_with_hint = rl_prompt.rstrip() + f" [default: {_last_answer}] "
+            raw_input = input(_rl_prompt_with_hint)
+            raw = raw_input if raw_input.strip() else _last_answer
+
+        result = _resolve_choice(raw, _value_map)
+        # Persist the raw user answer (not the resolved choice) so the stored
+        # default is always human-readable for the next invocation.
+        if result and not _is_sensitive:
+            _save_answer(_prompt_key, result)
+        return result
     except (KeyboardInterrupt, EOFError):
         print()
         return ""
