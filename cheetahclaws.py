@@ -499,7 +499,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "skills":      ("List available skills",              []),
     "memory":      ("Search / list / consolidate memories", ["consolidate"]),
     "agents":      ("Show background agents",             []),
-    "mcp":         ("Manage MCP servers",                 ["reload", "add", "remove"]),
+    "mcp":         ("Manage MCP servers",                 ["reload", "add", "remove", "list"]),
     "plugin":      ("Manage plugins",                     ["install", "uninstall", "enable",
                                                            "disable", "disable-all", "update",
                                                            "recommend", "info"]),

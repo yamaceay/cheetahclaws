@@ -870,6 +870,10 @@ def cmd_mcp(args: str, _state, config) -> bool:
             err(f"Server '{name}' not found in user config")
         return True
 
+    if subcmd not in ("", "list"):
+        err(f"Unknown /mcp subcommand '{subcmd}'. Use: reload, add, remove, list")
+        return True
+
     mgr = get_mcp_manager()
     servers = mgr.list_servers()
     config_files = list_config_files()
@@ -897,7 +901,10 @@ def cmd_mcp(args: str, _state, config) -> bool:
         }.get(client.state.value, "dim")
         print(f"  {clr(client.status_line(), status_color)}")
         for tool in client._tools:
-            print(f"      {clr(tool.qualified_name, 'cyan')}  {tool.description[:60]}")
+            import textwrap
+            desc_lines = textwrap.wrap(tool.description, width=72, subsequent_indent=" " * 8)
+            desc = ("\n" + " " * 8).join(desc_lines) if desc_lines else ""
+            print(f"      {clr(tool.qualified_name, 'cyan')}  {desc}")
             total_tools += 1
 
     if total_tools:
